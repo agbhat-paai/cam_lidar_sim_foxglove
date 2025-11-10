@@ -1,0 +1,41 @@
+paths:
+  # Relative paths from where the script is run
+  dataset_dir: "../dataset/Toronto_3D"
+  ply_filename: "Toronto_combined.ply"
+  result_dir: "../results"
+  camera_mcap_filename: "camera_sim.mcap"
+  lidar_mcap_filename: "lidar_sim.mcap"
+
+world:
+  # Original world coordinates
+  start_pos: [627446.52, 4842790.10, 140]
+  # Offset to shift the world origin as recommended by authors
+  utm_offset: [627285.0, 4841948.0, 0.0]
+
+simulation:
+  duration_sec: 1
+  fps: 5
+  speed_mps: 15.0
+
+camera:
+  width: 1920
+  height: 1080
+  focal_length_px: 960.0
+  yaw_offset_deg: -18.0
+
+  blur_enabled: true
+  blur_kernel_size: 5
+  noise_enabled: true
+  noise_sigma: 0.1
+
+lidar:
+  range_m: 100.0
+  points_per_second: 100000
+  channels: 32
+  vertical_fov_deg: [-10.0, 30.0]
+  horizontal_fov_deg: [-180.0, 180.0]
+  accuracy_m: 0.03
+
+processing:
+  downsample_enabled: true
+  voxel_size_m: 0.03
