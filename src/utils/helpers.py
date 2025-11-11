@@ -1,11 +1,17 @@
 import numpy as np
 from pathlib import Path
+import json
+from mcap.writer import Writer
+from mcap.well_known import SchemaEncoding, MessageEncoding
 
-def setup_simulation(cfg):
+def setup_simulation(cfg, sensor_type='camera'):
     """Prepares all static simulation data."""
     base_dir = Path.cwd()
     datapath = str(base_dir / cfg["paths"]["dataset_dir"] / cfg["paths"]["ply_filename"])
-    output_path = str(base_dir / cfg["paths"]["result_dir"] / cfg["paths"]["camera_mcap_filename"])
+    if sensor_type == 'camera':
+        output_path = str(base_dir / cfg["paths"]["result_dir"] / cfg["paths"]["camera_mcap_filename"])
+    else:
+        output_path = str(base_dir / cfg["paths"]["result_dir"] / cfg["paths"]["lidar_mcap_filename"])
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
     # World Setup
@@ -58,3 +64,54 @@ def get_pose(frame_idx, total_frames, start_pos, motion_vec, speed_mps, fps):
     current_pos = start_pos + (motion_vec * distance)  # curr position
 
     return current_pos
+
+
+def setup_foxglove_lidar_schema(writer):
+    """
+    Registers the foxglove.PointCloud schema for (x,y,z,r,g,b) data.
+    """
+    # We will pack our data as:
+    # x: float32 (4 bytes)
+    # y: float32 (4 bytes)
+    # z: float32 (4 bytes)
+    # r: uint8   (1 byte)
+    # g: uint8   (1 byte)
+    # b: uint8   (1 byte)
+    # padding: 1 byte
+    # TOTAL STRIDE: 16 bytes
+    
+    schema_json = {
+        "type": "object",
+        "properties": {
+            "timestamp": {"type": "object", "properties": {"sec": {"type": "integer"}, "nsec": {"type": "integer"}}},
+            "frame_id": {"type": "string"},
+            "pose": {"type": "object", "properties": {"position": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"}}}, "orientation": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"}, "w": {"type": "number"}}}}},
+            "point_stride": {"type": "integer", "description": "Number of bytes per point"},
+            "fields": {
+                "type": "array", 
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "offset": {"type": "integer"},
+                        "type": {"type": "integer", "description": "Numeric type (1=uint8, 7=float32)"}
+                    }
+                }
+            },
+            "data": {"type": "string", "contentEncoding": "base64"}
+        }
+    }
+
+    schema_id = writer.register_schema(
+        name="PointCloud",
+        encoding=SchemaEncoding.JSONSchema,
+        data=json.dumps(schema_json).encode("utf-8"),
+    )
+    
+    channel_id = writer.register_channel(
+        topic="lidar_sim",
+        message_encoding=MessageEncoding.JSON,
+        schema_id=schema_id
+    )
+    
+    return schema_id, channel_id

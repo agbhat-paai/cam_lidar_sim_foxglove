@@ -39,7 +39,7 @@ def load_config(config_path="config.yaml"):
     
 def main():
     cfg = load_config()
-    datapath, output_mcap, start_pos, R, motion_vec, K = setup_simulation(cfg)
+    datapath, output_mcap, start_pos, R, motion_vec, K = setup_simulation(cfg, sensor_type='camera')
 
     dist_cfg = cfg['camera'].get('distortion', {})
     dist_enabled = dist_cfg.get('enabled', False)
@@ -92,10 +92,10 @@ def main():
             #log processing time
             start_process = time.time()
             
-            t = get_pose(i, total_frames, start_pos, motion_vec, speed_mps, fps)
+            curr_pose = get_pose(i, total_frames, start_pos, motion_vec, speed_mps, fps)
 
             # transform and project points
-            points_cam = R @ (points_world - t.reshape(3, 1))
+            points_cam = R @ (points_world - curr_pose.reshape(3, 1))
 
             valid_mask = points_cam[2, :] > 0.1
             p_valid = points_cam[:, valid_mask]
