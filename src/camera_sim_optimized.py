@@ -81,10 +81,10 @@ def main():
             encoding=SchemaEncoding.JSONSchema,
             data='{"type": "object", "properties": {"timestamp": {"type": "object", "properties": {"sec": {"type": "integer"}, "nsec": {"type": "integer"}}}, "frame_id": {"type": "string"}, "format": {"type": "string"}, "data": {"type": "string", "contentEncoding": "base64"}}}'.encode('utf-8')
         )
-        channel_id = writer.register_channel("camera_front", MessageEncoding.JSON, schema_id)
+        channel_id = writer.register_channel(cfg['camera']['topic'], MessageEncoding.JSON, schema_id)
 
         print(f"Starting simulation ({total_frames} frames)...")
-        start_ns = time.time_ns()
+        start_ns = 1704067200 * 1_000_000_000
 
         for i in range(total_frames):
             # print(f"Processing frame {i+1}/{total_frames}...", end="\r") # OPT: Moved this print to the end of the loop

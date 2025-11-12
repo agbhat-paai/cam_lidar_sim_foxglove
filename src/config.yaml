@@ -15,7 +15,7 @@ world:
 simulation:
   duration_sec: 15
   fps: 10
-  speed_mps: 15
+  speed_mps: 13  #30mph
   debug_viz: false
 
 processing:

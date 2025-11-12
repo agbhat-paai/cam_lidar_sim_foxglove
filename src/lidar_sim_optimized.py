@@ -98,7 +98,39 @@ def main():
         point_stride = 24
 
         print(f"Starting simulation ({total_frames} frames)...")
-        start_ns = time.time_ns()
+        start_ns = 1704067200 * 1_000_000_000
+
+        print("Adding car model...")
+        car_channel = SceneUpdateChannel(topic="/car_model")
+        
+        # This finds the script's own folder and looks for "car.glb"
+        # __file__ is the path to your .py script
+        model_path = (Path(__file__).parent.parent / "assets"/ "f1_car_concept.glb").as_uri()
+        
+        
+        car_scene = SceneUpdate(
+            entities=[
+                SceneEntity(
+                    timestamp=Timestamp(sec=0, nsec=0), 
+                    frame_id="base_link", # Fixed to base_link
+                    id="the_car",
+                    models=[
+                        ModelPrimitive(
+                            url=model_path,
+                            # --- THIS IS THE FIX ---
+                            # Add scale and pose to control the model
+                            scale=Vector3(x=0.6, y=0.6, z=0.6),
+                            pose=Pose(
+                                position=Vector3(x=0, y=0, z=-1.0),
+                                orientation=Quaternion(x=0, y=0, z=0.707, w=0.707)
+                            )
+                        )
+                    ]
+                )
+            ]
+        )
+        # Write the car model *once* at the beginning
+        car_channel.log(car_scene, log_time=start_ns)
 
         for i in range(total_frames):
             start_process = time.time()
@@ -206,7 +238,7 @@ def main():
             channel.log(pc_msg, log_time=log_time_ns)
 
             end_process = time.time()
-            print(f"Frame {i+1}/{total_frames} processed in {(end_process - start_process)*1000:.1f} ms ({final_num_points} points)")
+            print(f"Frame {i+1}/{total_frames} processed in {(end_process - start_process)*1000:.1f} ms", end=" " * 10 + "\r")
 
 
 if __name__ == "__main__":
