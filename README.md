@@ -3,7 +3,9 @@
 
 The package replays static datasets (e.g., Toronto_3D) through a virtual ego-vehicle, emits MCAP logs that follow Foxglove schemas, and makes it easy to visualize synchronized RGB and point cloud streams.
 
-<img width="1383" height="1107" alt="Screenshot 2025-11-12 at 3 44 11 PM" src="https://github.com/user-attachments/assets/5c0ed64b-a24c-4862-a1de-3538fdb9e8c1" />
+<!-- <img width="1383" height="1107" alt="Screenshot 2025-11-12 at 3 44 11 PM" src="https://github.com/user-attachments/assets/5c0ed64b-a24c-4862-a1de-3538fdb9e8c1" /> -->
+
+![foxglove_result](https://github.com/user-attachments/assets/3a37d73e-3b7f-4e0b-9fc3-e3639bd1ee65)
 
 
 ## Features
