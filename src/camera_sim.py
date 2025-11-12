@@ -16,7 +16,7 @@ def load_config(config_path="config.yaml"):
     
 def main():
     cfg = load_config()
-    datapath, output_mcap, start_pos, R, motion_vec, K = setup_simulation(cfg)
+    datapath, output_mcap, start_pos, R, R_yaw, motion_vec, K = setup_simulation(cfg)
 
     dist_cfg = cfg['camera'].get('distortion', {})
     dist_enabled = dist_cfg.get('enabled', False)

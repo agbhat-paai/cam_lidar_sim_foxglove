@@ -17,9 +17,9 @@ from foxglove.schemas import SceneUpdate, SceneEntity, ModelPrimitive
 from utils.helpers import setup_simulation, get_pose
 from scipy.spatial.transform import Rotation as R
 
-
-
 f32 = PackedElementFieldNumericType.Float32
+
+
 
 def rotmat_to_quat(rot_matrix):
     quat = R.from_matrix(rot_matrix).as_quat()
@@ -38,7 +38,6 @@ def main():
     fps = cfg['simulation']['fps']
     total_frames = int(cfg['simulation']['duration_sec'] * fps)
     speed_mps = cfg['simulation']['speed_mps']
-    debug_viz = cfg['simulation'].get('debug_viz', False)
 
     lidar_radius = cfg['lidar']['range_m']
     channels = cfg['lidar']['channels']  
@@ -70,24 +69,19 @@ def main():
 
     # build KDTree
     kdtree = o3d.geometry.KDTreeFlann(pcd)
+
+    # per frame precomputations
+    elevation_arr = np.linspace(
+        np.deg2rad(vertical_fov_deg[0]), 
+        np.deg2rad(vertical_fov_deg[1]), 
+        channels
+    )
+
+    elev_min_rad = elevation_arr[0]
+    elev_span_rad = elevation_arr[-1] - elev_min_rad
+    horiz_fov_rad = 2 * np.pi
     
-    vis = None 
-    pcd_vis = o3d.geometry.PointCloud() # Placeholder
-    origin_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0) # Sensor origin
-
-    if debug_viz:
-        print("Debug 3D visualization enabled. A window will open.")
-        vis = o3d.visualization.Visualizer()
-        vis.create_window()
-        
-        opt = vis.get_render_option()
-        opt.point_size = 5.0
-        opt.background_color = np.asarray([1, 1, 1])
-        vis.add_geometry(origin_frame)
-        
-        vis.add_geometry(pcd_vis)
-
-
+    
     with foxglove.open_mcap(output_mcap, allow_overwrite=True) as writer:
 
         lidar_topic = cfg['lidar']['topic']
@@ -119,105 +113,101 @@ def main():
             local_points = points_world[:, idx]
             local_colors = colors_world[:, idx]
 
-            #CORE LOGIC
             #convert local points relative to lidar frame
             points_lidar = local_points - curr_pose.reshape(3, 1)
 
-            #based on no. of beams, filter
-            elevation_arr = np.linspace(
-                np.deg2rad(vertical_fov_deg[0]), 
-                np.deg2rad(vertical_fov_deg[1]), 
-                channels)
-            
-            range_buffer = np.full((channels, num_azim_bins), np.inf) 
-            index_buffer = np.full((channels, num_azim_bins), -1, dtype=int)
-            
-            # print(elevation_arr)
-
-            for j, point in enumerate(points_lidar.T):
-                x,y,z = point
+            # optimization
+            num_pts_in_radius = points_lidar.shape[1]
+            if num_pts_in_radius == 0:
+                continue
                 
-                radius = np.linalg.norm(point, axis=0) + 1e-9
-                safe_ratio = np.clip(z / radius, -1.0, 1.0)
-                elev = np.arcsin(safe_ratio)
-                azim = np.arctan2(y, x)
+            # vectorixing
+            x,y,z = points_lidar[0,:], points_lidar[1,:], points_lidar[2,:]
+            radius = np.linalg.norm(points_lidar, axis=0) + 1e-9
+            elev = np.arcsin(np.clip(z / radius, -1.0, 1.0))
+            azim = np.arctan2(y, x)
+            
+            #scaling
+            elev_normalized = (elev - elev_min_rad) / elev_span_rad
+            elev_idx = np.round(elev_normalized * (channels - 1)).astype(int)
+            
+            azim_normalized = (azim + np.pi) / horiz_fov_rad
+            azim_idx = np.round(azim_normalized * num_azim_bins).astype(int)
 
-                elev_idx = np.argmin(np.abs(elevation_arr - elev))
-                nearest_elev_rad = elevation_arr[elev_idx]
+            # print(azim_idx.shape)
+            # print(elev_idx.shape)
 
-                if abs(nearest_elev_rad - elev) <= angle_threshold_rad:
-                    
-                    # Convert to index (0 to num_azim_bins-1)
-                    azim_idx = int(((azim + np.pi) / (2 * np.pi)) * num_azim_bins)
-                    
-                    # precaution
-                    if azim_idx < 0 or azim_idx >= num_azim_bins or elev_idx < 0 or elev_idx >= channels:
-                        continue
+            #check bounds for horiz bins and verticle channels
+            # from here on, masks propagate in the pipeline leading to a combined mask
+            in_bounds_mask = (elev_idx >= 0) & (elev_idx < channels) & (azim_idx >= 0) & (azim_idx < num_azim_bins)
+            
+            # create angle mask that filters all points in elev channels with angle threshold
+            nearest_elev_rad = elevation_arr[elev_idx[in_bounds_mask]]
+            angle_mask = np.abs(nearest_elev_rad - elev[in_bounds_mask]) <= angle_threshold_rad
+            
+            # get the final combined mask
+            final_mask = np.zeros(num_pts_in_radius, dtype=bool)
+            final_mask[in_bounds_mask] = angle_mask
 
-                    # occlusion check
-                    if radius < range_buffer[elev_idx, azim_idx]:
-                        range_buffer[elev_idx, azim_idx] = radius
-                        index_buffer[elev_idx, azim_idx] = j
+            elev_idx_f = elev_idx[final_mask]
+            azim_idx_f = azim_idx[final_mask]
+            radius_f = radius[final_mask]
 
-            # get unique points, filter out -1s
-            final_indices = index_buffer[index_buffer != -1]
+            #track original indices for colors
+            original_indices = np.arange(num_pts_in_radius)[final_mask]
+            
+            # Sort all points by radius (closest first)
+            sort_order = np.argsort(radius_f)
+            elev_idx_s = elev_idx_f[sort_order]
+            azim_idx_s = azim_idx_f[sort_order]
+            original_indices_s = original_indices[sort_order]
+            
+            # ravel 2D beam idx to 1D 
+            raveled_indices = np.ravel_multi_index((elev_idx_s, azim_idx_s), (channels, num_azim_bins))
+            _, unique_map_indices = np.unique(raveled_indices, return_index=True)
+            final_indices = original_indices_s[unique_map_indices]
+
 
             final_points_lidar = points_lidar[:, final_indices] 
             final_colors_lidar = local_colors[:, final_indices]
-
             final_num_points = final_points_lidar.shape[1]
-
-            if debug_viz:
-
-                vis.remove_geometry(pcd_vis, reset_bounding_box=True) 
-                pcd_vis = o3d.geometry.PointCloud()
-                pcd_vis.points = o3d.utility.Vector3dVector(final_points_lidar.T)
-                pcd_vis.colors = o3d.utility.Vector3dVector(final_colors_lidar.T)
-                vis.add_geometry(pcd_vis, reset_bounding_box=True)
-                
-                if not vis.poll_events():
-                    print("\nUser closed the visualization window.")
-                    debug_viz = False
-                
-                vis.update_renderer()
+            
             
             if final_num_points == 0:
                 continue # skip frame if no points are visible
 
-            if final_num_points > 0:
-                points_xyz = final_points_lidar.T.astype(np.float32)
-                points_rgb = final_colors_lidar.T.astype(np.float32)
+            
+            points_xyz = final_points_lidar.T.astype(np.float32)
+            points_rgb = final_colors_lidar.T.astype(np.float32)
 
-                combined_data = np.hstack((points_xyz, points_rgb))
-                data_bytes = combined_data.tobytes()
+            combined_data = np.hstack((points_xyz, points_rgb))
+            data_bytes = combined_data.tobytes()
 
-                log_time_ns = start_ns + int((i / fps) * 1e9)
-                ts_obj = Timestamp(sec=log_time_ns // int(1e9), nsec=log_time_ns % int(1e9))
+            log_time_ns = start_ns + int((i / fps) * 1e9)
+            ts_obj = Timestamp(sec=log_time_ns // int(1e9), nsec=log_time_ns % int(1e9))
 
-                q_dict = rotmat_to_quat(R_yaw)
-                pose_obj = Pose(
-                    position=Vector3(x=0.0, y=0.0, z=0.0),
-                    orientation=Quaternion(x=q_dict['x'], y=q_dict['y'], z=q_dict['z'], w=q_dict['w'])
-                )
+            q_dict = rotmat_to_quat(R_yaw)
+            
+            pose_obj = Pose(
+                position=Vector3(x=0.0, y=0.0, z=0.0),
+                orientation=Quaternion(x=q_dict['x'], y=q_dict['y'], z=q_dict['z'], w=q_dict['w'])
+            )
 
-                
-                pc_msg = PointCloud(
-                    timestamp=ts_obj,
-                    frame_id="base_link",
-                    pose=pose_obj,        
-                    point_stride=point_stride,
-                    fields=fields,
-                    data=data_bytes
-                )
+            
+            pc_msg = PointCloud(
+                timestamp=ts_obj,
+                frame_id="base_link",
+                pose=pose_obj,        
+                point_stride=point_stride,
+                fields=fields,
+                data=data_bytes
+            )
 
-                channel.log(pc_msg, log_time=log_time_ns)
+            channel.log(pc_msg, log_time=log_time_ns)
 
             end_process = time.time()
             print(f"Frame {i+1}/{total_frames} processed in {(end_process - start_process)*1000:.1f} ms ({final_num_points} points)")
 
-    if vis:
-        vis.destroy_window()
-    
 
 if __name__ == "__main__":
     main()

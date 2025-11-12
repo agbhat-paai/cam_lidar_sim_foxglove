@@ -2,4 +2,4 @@ dataset/
 notebooks/notebook.ipynb
 src/utils/__pycache__/
 results/*
-results/camera_sim_v1.mcap
+*.mcap

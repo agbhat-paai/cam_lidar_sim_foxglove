@@ -39,7 +39,7 @@ def load_config(config_path="config.yaml"):
     
 def main():
     cfg = load_config()
-    datapath, output_mcap, start_pos, R, motion_vec, K = setup_simulation(cfg, sensor_type='camera')
+    datapath, output_mcap, start_pos, R, R_yaw, motion_vec, K = setup_simulation(cfg, sensor_type='camera')
 
     dist_cfg = cfg['camera'].get('distortion', {})
     dist_enabled = dist_cfg.get('enabled', False)
@@ -147,7 +147,7 @@ def main():
 
             msg = {
                 "timestamp": {"sec": frame_time_ns // 10**9, "nsec": frame_time_ns % 10**9},
-                "frame_id": "camera_link",
+                "frame_id": "base_link",
                 "format": "jpeg",
                 "data": base64.b64encode(jpeg_data.tobytes()).decode('utf-8')
             }
