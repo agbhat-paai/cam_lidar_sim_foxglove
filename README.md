@@ -24,6 +24,10 @@ The package replays static datasets (e.g., Toronto_3D) through a virtual ego-veh
    ```
 5. Open the generated MCAP files from `results/` in Foxglove to inspect the data streams.
 
+<img width="1383" height="1107" alt="Screenshot 2025-11-12 at 3 44 11 PM" src="https://github.com/user-attachments/assets/5c0ed64b-a24c-4862-a1de-3538fdb9e8c1" />
+
+
+
 ## Repository Layout
 - `cam_lidar_sim_foxglove/src/`: Simulator scripts, configuration, and shared helpers.
 - `dataset/`: Expected location for input point clouds (Toronto_3D sample paths provided).
